@@ -5,581 +5,659 @@
 //  Created by Choo Xuan Wing on 26/10/2019.
 //  Copyright © 2019 Choo Xuan Wing. All rights reserved.
 //
-
+//  Refactored: Fixed critical bugs, improved design, and added documentation.
+//
 #include <iostream>
 #include <string>
 #include <fstream>
 #include <sstream>
 #include <vector>
 #include <algorithm>
-using namespace std;
 
-class tempDNA_DB{
+// [Fix #9] Merged duplicate DNA_DB and tempDNA_DB into a single class.
+// Previously there were two identical classes; now we use one and create
+// multiple instances where needed.
+class DNA_DB {
 public:
-	string SEQ;
-	string GID;
-	string REF;
-	string FileName;
-	string Name;
-	
+    std::string SEQ;
+    std::string GID;
+    std::string REF;
+    std::string FileName;
+    std::string Name;
 };
 
-class DNA_DB{
-private:
-//	string SEQ;
-public:
-	string SEQ;
-	string GID;
-	string REF;
-	string FileName;
-	string Name;
-
+// Struct to store user input state and file information.
+struct InputData {
+    int count = 0;
+    int check = 0;
+    std::string File;
+    std::string initialSelect;
+    std::string str;
+    std::string tempstr;
+    std::vector<std::string> fileNumber;
+    std::vector<std::string> fileNames;
+    std::vector<std::string> onlyNames;
 };
 
-struct input{			// initialise struct to store function outputs
-	int count=0;
-	int check =0;
-	string File;
-	string initialSelect;
-	string str;
-	string tempstr;
-	vector<string> fileNumber;
-	vector<string> fileNames;
-	vector<string> onlyNames;
+// [Fix #12] Renamed from 'initialOptions' to 'MenuOptions' to avoid
+// name collision with the function that was previously called initialOptions().
+struct MenuOptions {
+    std::vector<std::string> optionNum;
+    std::vector<std::string> optionName;
+    std::string optionSelect;
 };
 
-struct initialOptions{
-	vector<string> optionNum;
-	vector<string> optionName;
-	string optionSelect;
-	
+// Struct to hold help menu display data.
+struct HelpMenuData {
+    std::vector<std::string> helpNum;
+    std::vector<std::string> helpName;
 };
 
-struct helpMenu{
-	vector<string> helpNum;
-	vector<string> helpName;
+// [Fix #11] Renamed from 'analyse' to 'AnalysisResult' to avoid the
+// name collision where the struct and the variable had the same name.
+// [Fix #4] Initialized nRegion and cRegion to 0 — they were previously
+// uninitialized, which is undefined behavior when read before being set.
+struct AnalysisResult {
+    long regions = 0, nRegions = 0, cRegions = 0, basePairs = 0;
+    long G = 0, A = 0, T = 0, C = 0, R = 0, Y = 0, M = 0, K = 0;
+    long S = 0, W = 0, H = 0, B = 0, V = 0, D = 0, N = 0, unknown = 0;
+    long nRegion = 0, cRegion = 0;
+    std::vector<std::string> gapRegion;
+    std::vector<std::string> codeRegion;
+    std::vector<int> NindexStart;
+    std::vector<int> NindexEnd;
+    int nStart = 0;
 };
 
-struct analyse{
-	long regions=0, nRegions=0, cRegions=0, basePairs=0, G=0,A=0,T=0,C=0,R=0,Y=0,M=0,K=0,S=0,W=0,H=0,B=0,V=0,D=0,N=0,unknown=0;
-	long nRegion, cRegion;
-	vector<string> gapRegion;
-	vector<string> codeRegion;
-	vector<int> NindexStart;
-	vector<int> NindexEnd;
-	int nStart;
-//	vector<int> CindexStart;
-//	vector<int> CindexEnd;
-};
+// [Fix #7] Global variables are kept for simplicity in this console application,
+// but have been reduced and renamed for clarity.
+DNA_DB dna_db;
+DNA_DB tempdna_db;
+long indexG;
+InputData initial;
+MenuOptions menuOption;
+HelpMenuData helpData;
+AnalysisResult analysisResult;
 
-class DNA_DB dna_db;			// make class global so values can be transferred throughout programme
-class tempDNA_DB tempdna_db;
-long indexG;			// gobal index value
-struct input initial;			// make struct global so its easy to pass values around
-struct initialOptions option;
-struct helpMenu help;
-struct analyse analyse;
+// Parses a comma-separated string of file names and populates the
+// initial struct's fileNames, fileNumber, and onlyNames vectors.
+void organiseFile(std::string File) {
+    std::stringstream file(File);
 
-void organiseFile(string File){			// function to collect and sort input file names
+    // Add the summary option as the first menu entry
+    initial.fileNames.push_back("Summary statistics of the DNA database");
+    initial.fileNumber.push_back("S");
 
-	stringstream file(File);			// ready string we entered fpr processing
-		
-	initial.fileNames.push_back("Summary statistics of the DNA database");
-	initial.fileNumber.push_back("S");
-	
-	while (file.good()){			// check if file exists
-		initial.count++;			// increment count for check
-		initial.fileNumber.push_back(to_string(initial.count));			// numbers to oiption
-		string subst;
-		getline(file, subst, ',');			// takes input string, reads up till "," and saves to subst. repears untill threres none left
-		initial.fileNames.push_back(subst);		// insert subst into vector
-		initial.onlyNames.push_back(subst);		// insert subst into vector for summary processing
-	}
-	
-	initial.fileNumber.push_back("Q");
-	initial.fileNames.push_back("Quit");
-	
+    while (file.good()) {
+        initial.count++;
+        initial.fileNumber.push_back(std::to_string(initial.count));
+        std::string subst;
+        std::getline(file, subst, ',');
+        initial.fileNames.push_back(subst);
+        initial.onlyNames.push_back(subst);
+    }
+
+    // Add the quit option as the last menu entry
+    initial.fileNumber.push_back("Q");
+    initial.fileNames.push_back("Quit");
 }
 
-void printOrganiseFile(){
-	
-	cout << "\nSelect one of the following options" << endl;
-		for(int i = 0; i<initial.fileNames.size(); i++) {
-			std::cout << "("<< initial.fileNumber.at(i)
-			<< ")\t" << initial.fileNames.at(i) << endl;
-		}
-	cout<< ">";
+// Displays the file selection menu to the user.
+void printOrganiseFile() {
+    std::cout << "\nSelect one of the following options" << std::endl;
+    for (size_t i = 0; i < initial.fileNames.size(); i++) {
+        std::cout << "(" << initial.fileNumber.at(i)
+                  << ")\t" << initial.fileNames.at(i) << std::endl;
+    }
+    std::cout << ">";
 }
 
-int checkElement(){
-	
-	std::vector<string>::iterator check;
-	check = std::find(initial.fileNumber.begin(), initial.fileNames.end(), initial.initialSelect);
-	if (check == initial.fileNumber.end())
-		return 1;
-	else
-		return 0;
+// [Fix #1] Fixed mismatched iterator ranges. Previously used
+// initial.fileNumber.begin() with initial.fileNames.end() — iterators from
+// two different vectors, which is undefined behavior.
+// Now correctly uses begin() and end() from the same vector.
+int checkElement() {
+    std::vector<std::string>::iterator check;
+    check = std::find(initial.fileNumber.begin(), initial.fileNumber.end(), initial.initialSelect);
+    if (check == initial.fileNumber.end())
+        return 1;
+    else
+        return 0;
 }
 
-void selectFile(string select){
-	
-	std::vector<string>::iterator command;			// make "command" as an iterator
-	command = std::find(initial.fileNumber.begin(), initial.fileNumber.end(), select);			// finds specific element in vector
-	if (command == initial.fileNumber.end()){
-		cout << "Command not recognised" << endl;
-	}
-	else if (command != initial.fileNumber.end()){
-		auto index = std::distance(initial.fileNumber.begin(), command );			// puts index of input and places them into filenames to print out filename
-		indexG=index;
-		cout << "Loading " << initial.fileNames.at(index) << "..."<< endl;
-		std::ifstream input(initial.fileNames.at(index));		//streams selected file
-		if (input.fail() ){
-			cout << "Error, could not open file" << endl;
-			initial.check =1;			// increment to tell int main() to halt
-		}
-	}
+// Finds and loads the file corresponding to the user's menu selection.
+// [Fix #14] Consistent error handling — sets initial.check flag on failure.
+void selectFile(std::string select) {
+    std::vector<std::string>::iterator command;
+    command = std::find(initial.fileNumber.begin(), initial.fileNumber.end(), select);
+    if (command == initial.fileNumber.end()) {
+        std::cout << "Command not recognised" << std::endl;
+    } else {
+        auto index = std::distance(initial.fileNumber.begin(), command);
+        indexG = index;
+        std::cout << "Loading " << initial.fileNames.at(index) << "..." << std::endl;
+        std::ifstream input(initial.fileNames.at(index));
+        if (input.fail()) {
+            std::cout << "Error, could not open file" << std::endl;
+            initial.check = 1;
+        }
+    }
 }
 
-void assignClass(){
-	
-	string subst;
-	std::ifstream input(initial.fileNames.at(indexG));		// streams selected file
-	// Input file contents into classes
-	string gid, seq, name, ref, temp, tempDNAseq;
-	ostringstream ss;		//initialises ss as char array
-	ss<<input.rdbuf();		// rdbuf points input(file conts) into ss
-	initial.str = ss.str();		// ss as a string puts into struct initial str
-	stringstream file(initial.str);
-	
-	while (!std::getline(file, subst, '|').eof()){		// run when not EOF
-		getline(file, gid, '|');
-		getline(file, temp, '|');		// temp used as junk variable to store unwanted characters
-		getline(file, ref, '|');
-		getline(file, name, '\n');
-		while(!file.eof()){			// loop to read lines of dna Seq
-			getline(file, tempDNAseq);
-			seq.append(tempDNAseq);		// append adds new line to existing
-		}
-		dna_db.SEQ=seq;			// places elements into class
-		dna_db.GID=gid;
-		dna_db.Name=name;
-		dna_db.REF=ref;
-	}
-	
-};
+// Reads the selected file and parses its contents into the dna_db class.
+// File format expected: fields separated by '|', with DNA sequence on subsequent lines.
+// [Fix #14] Added file-open check for consistent error handling.
+void assignClass() {
+    std::string subst;
+    std::ifstream input(initial.fileNames.at(indexG));
+    if (input.fail()) {
+        std::cout << "Error, could not open file in assignClass()" << std::endl;
+        initial.check = 1;
+        return;
+    }
 
-void initialOptions(){
-		
-	option.optionNum.push_back("H");
-	option.optionNum.push_back("S");
-	option.optionNum.push_back("1");
-	option.optionNum.push_back("2");
-	option.optionNum.push_back("3");
-	option.optionNum.push_back("4");
-	option.optionNum.push_back("5");
-	option.optionNum.push_back("R");
-	option.optionNum.push_back("Q");
-	
-	option.optionName.push_back("Help");
-	option.optionName.push_back("Summary statistics of the DNA sequence");
-	option.optionName.push_back("Analyse gap region");
-	option.optionName.push_back("Analyse coded region");
-	option.optionName.push_back("Analyse base pair range");
-	option.optionName.push_back("Find DNA sequence by manual input");
-	option.optionName.push_back("Find DNA sequence by file input");
-	option.optionName.push_back("Return to the previous menu");
-	option.optionName.push_back("Quit");
-	
+    std::string gid, seq, name, ref, temp, tempDNAseq;
+    std::ostringstream ss;
+    ss << input.rdbuf();
+    initial.str = ss.str();
+    std::stringstream file(initial.str);
+
+    while (!std::getline(file, subst, '|').eof()) {
+        std::getline(file, gid, '|');
+        std::getline(file, temp, '|');
+        std::getline(file, ref, '|');
+        std::getline(file, name, '\n');
+        while (!file.eof()) {
+            std::getline(file, tempDNAseq);
+            seq.append(tempDNAseq);
+        }
+        dna_db.SEQ = seq;
+        dna_db.GID = gid;
+        dna_db.Name = name;
+        dna_db.REF = ref;
+    }
 }
 
-void printInitialOptions(){
-	
-	cout << "\nSelect one of the following options" << endl;
-		for(int i = 0; i<option.optionName.size(); i++) {
-			std::cout << "("<< option.optionNum.at(i)
-			<< ")\t" << option.optionName.at(i) << endl;
-		}
-	cout<< ">";
+// [Fix #12] Renamed function from initialOptions() to initMenuOptions()
+// to avoid collision with the struct that was previously named initialOptions.
+// Populates the analysis menu options (displayed after a file is loaded).
+void initMenuOptions() {
+    menuOption.optionNum.push_back("H");
+    menuOption.optionNum.push_back("S");
+    menuOption.optionNum.push_back("1");
+    menuOption.optionNum.push_back("2");
+    menuOption.optionNum.push_back("3");
+    menuOption.optionNum.push_back("4");
+    menuOption.optionNum.push_back("5");
+    menuOption.optionNum.push_back("R");
+    menuOption.optionNum.push_back("Q");
+
+    menuOption.optionName.push_back("Help");
+    menuOption.optionName.push_back("Summary statistics of the DNA sequence");
+    menuOption.optionName.push_back("Analyse gap region");
+    menuOption.optionName.push_back("Analyse coded region");
+    menuOption.optionName.push_back("Analyse base pair range");
+    menuOption.optionName.push_back("Find DNA sequence by manual input");
+    menuOption.optionName.push_back("Find DNA sequence by file input");
+    menuOption.optionName.push_back("Return to the previous menu");
+    menuOption.optionName.push_back("Quit");
 }
 
-void firstSummary(){
-	
-	long size,i;
-	string subst;
-	string gid, seq, name, ref, temp, tempDNAseq;
-	size= initial.onlyNames.size();
-	
-	cout << "\nThis DNA database holds " << size << " sequence(s)" << endl;
-	for (i=0 ; i<size; i++){
-		std::ifstream input(initial.onlyNames.at(i));				//read loaded files
-		ostringstream ss;											// makes file into a string
-		ss<< input.rdbuf();
-		initial.tempstr = ss.str();						//loads string into temp dna class
-		stringstream file(initial.tempstr);				// makes file a command for streaming in function
-		
-		while (!std::getline(file, subst, '|').eof()){
-			getline(file,gid,'|');
-			getline(file,temp,'|');
-			getline(file,ref,'|');
-			getline(file,name,'\n');
-			
-			while (!file.eof()){
-				getline(file, tempDNAseq);
-				seq.append(tempDNAseq);
-			}
-			tempdna_db.SEQ=seq;
-			tempdna_db.GID=gid;
-			tempdna_db.Name=name;
-			tempdna_db.REF=ref;
-		}
-		cout << "\nSequence " << i+1 << ":" <<endl;
-		cout << "Name:\t" << tempdna_db.Name << endl;
-		cout << "GID:\t" << tempdna_db.GID << endl;
-		cout << "REF:\t" << tempdna_db.REF << endl;
-		cout << "# base pairs:\t" << tempdna_db.SEQ.length() <<"\n"<< endl;
-	}
-	
+// Displays the analysis options menu to the user.
+void printMenuOptions() {
+    std::cout << "\nSelect one of the following options" << std::endl;
+    for (size_t i = 0; i < menuOption.optionName.size(); i++) {
+        std::cout << "(" << menuOption.optionNum.at(i)
+                  << ")\t" << menuOption.optionName.at(i) << std::endl;
+    }
+    std::cout << ">";
 }
 
+// Displays a summary of all loaded DNA sequence files.
+// [Fix #13] seq.clear() is now called at the start of each loop iteration
+// to prevent sequences from accumulating across files (previously gave
+// incorrect base-pair counts for all files after the first).
+void firstSummary() {
+    long size;
+    std::string subst;
+    size = initial.onlyNames.size();
 
-void helpMenu(){	// Help Menu
-	
-	help.helpNum.push_back("Code");
-	help.helpNum.push_back("G");
-	help.helpNum.push_back("A");
-	help.helpNum.push_back("T");
-	help.helpNum.push_back("C");
-	help.helpNum.push_back("Y");
-	help.helpNum.push_back("M");
-	help.helpNum.push_back("K");
-	help.helpNum.push_back("S");
-	help.helpNum.push_back("W");
-	help.helpNum.push_back("H");
-	help.helpNum.push_back("B");
-	help.helpNum.push_back("V");
-	help.helpNum.push_back("D");
-	help.helpNum.push_back("N");
+    std::cout << "\nThis DNA database holds " << size << " sequence(s)" << std::endl;
+    for (long i = 0; i < size; i++) {
+        std::string gid, seq, name, ref, temp, tempDNAseq;
+        seq.clear(); // [Fix #13] Clear seq each iteration to avoid accumulation
 
-	help.helpName.push_back("Base Description");
-	help.helpName.push_back("Guanine");
-	help.helpName.push_back("Adenine");
-	help.helpName.push_back("Thymine (Uracil in RNA)");
-	help.helpName.push_back("Cytosine");
-	help.helpName.push_back("Purine (A or G)");
-	help.helpName.push_back("Pyrimidine (C or T or U)");
-	help.helpName.push_back("Amino (A or C)");
-	help.helpName.push_back("Ketone (G or T)");
-	help.helpName.push_back("Strong interaction (C or G)");
-	help.helpName.push_back("Weak interaction (A or T)");
-	help.helpName.push_back("Not-G (A or C or T) H follows G in the alphabet");
-	help.helpName.push_back("Not-A (C or G or T) B follows A in the alphabet");
-	help.helpName.push_back("Not-T (not-U) (A or C or G) V follows U in the alphabet");
-	help.helpName.push_back("Not-C (A or G or T) D follows C in the alphabet");
-	help.helpName.push_back("Any (A or C or G or T)");
+        std::ifstream input(initial.onlyNames.at(i));
+        std::ostringstream ss;
+        ss << input.rdbuf();
+        initial.tempstr = ss.str();
+        std::stringstream file(initial.tempstr);
 
-	for(int i = 0; i<help.helpNum.size(); i++) {
-		cout << help.helpNum.at(i)
-		<< "\t\t" << help.helpName.at(i) << endl;
-	}
+        while (!std::getline(file, subst, '|').eof()) {
+            std::getline(file, gid, '|');
+            std::getline(file, temp, '|');
+            std::getline(file, ref, '|');
+            std::getline(file, name, '\n');
+
+            while (!file.eof()) {
+                std::getline(file, tempDNAseq);
+                seq.append(tempDNAseq);
+            }
+            tempdna_db.SEQ = seq;
+            tempdna_db.GID = gid;
+            tempdna_db.Name = name;
+            tempdna_db.REF = ref;
+        }
+        std::cout << "\nSequence " << i + 1 << ":" << std::endl;
+        std::cout << "Name:\t" << tempdna_db.Name << std::endl;
+        std::cout << "GID:\t" << tempdna_db.GID << std::endl;
+        std::cout << "REF:\t" << tempdna_db.REF << std::endl;
+        std::cout << "# base pairs:\t" << tempdna_db.SEQ.length() << "\n" << std::endl;
+    }
 }
 
-void summary(){
-	
-	// Calculates base pair stuff
-	cout << "\nLoading..."<< endl;
-	analyse.basePairs= dna_db.SEQ.length();
-	
-	analyse.G= count(dna_db.SEQ.begin(), dna_db.SEQ.end(),'G');
-	analyse.A= count(dna_db.SEQ.begin(), dna_db.SEQ.end(),'A');
-	analyse.T= count(dna_db.SEQ.begin(), dna_db.SEQ.end(),'T');
-	analyse.C= count(dna_db.SEQ.begin(), dna_db.SEQ.end(),'C');
-	analyse.N= count(dna_db.SEQ.begin(), dna_db.SEQ.end(),'N');
-	analyse.unknown= analyse.basePairs - analyse.G - analyse.C - analyse.T - analyse.A - analyse.N;
-	
-	cout << "Sequence identifiers:"<< endl;
-	cout << "Name:\t" << dna_db.Name << endl;
-	cout << "GID:\t" << dna_db.GID << endl;
-	cout << "REF:\t" << dna_db.REF << endl;
-	
-	cout << "\nRegion characteristics:"<<endl;
-	cout << "# regions:\t" << analyse.nRegion+analyse.cRegion << endl;
-	cout << "# N regions:\t" << analyse.nRegion << endl;
-	cout << "# C regions:\t" << analyse.cRegion << endl;
-	
-	cout << "\nBase pair characteristics:"<<endl;
-	cout << "# base pairs\t" << dna_db.SEQ.length() << endl;
-	cout << "G:\t" << analyse.G << endl;
-	cout << "A:\t" << analyse.A  << endl;
-	cout << "T:\t" << analyse.T  << endl;
-	cout << "C:\t" << analyse.C  << endl;
-	cout << "R:\t" << analyse.C + analyse.A  << endl;
-	cout << "Y:\t" << analyse.C + analyse.T  << endl;
-	cout << "M:\t" << analyse.A + analyse.C  << endl;
-	cout << "K:\t" << analyse.G + analyse.T  << endl;
-	cout << "S:\t" << analyse.C + analyse.G  << endl;
-	cout << "W:\t" << analyse.A + analyse.T  << endl;
-	cout << "H:\t" << analyse.A + analyse.C + analyse.T << endl;
-	cout << "B:\t" << analyse.C + analyse.G + analyse.T << endl;
-	cout << "V:\t" << analyse.C + analyse.G + analyse.A << endl;
-	cout << "D:\t" << analyse.A + analyse.G + analyse.T << endl;
-	cout << "N:\t" << analyse.N  << endl;
-	cout << "Unknown:\t" << analyse.unknown  << endl;
+// [Fix #2] Help menu data is now initialized once in initHelpMenu() (called
+// from main), instead of appending duplicates every time the user presses 'H'.
+void initHelpMenu() {
+    helpData.helpNum.push_back("Code");
+    helpData.helpNum.push_back("G");
+    helpData.helpNum.push_back("A");
+    helpData.helpNum.push_back("T");
+    helpData.helpNum.push_back("C");
+    helpData.helpNum.push_back("Y");
+    helpData.helpNum.push_back("M");
+    helpData.helpNum.push_back("K");
+    helpData.helpNum.push_back("S");
+    helpData.helpNum.push_back("W");
+    helpData.helpNum.push_back("H");
+    helpData.helpNum.push_back("B");
+    helpData.helpNum.push_back("V");
+    helpData.helpNum.push_back("D");
+    helpData.helpNum.push_back("N");
 
+    helpData.helpName.push_back("Base Description");
+    helpData.helpName.push_back("Guanine");
+    helpData.helpName.push_back("Adenine");
+    helpData.helpName.push_back("Thymine (Uracil in RNA)");
+    helpData.helpName.push_back("Cytosine");
+    helpData.helpName.push_back("Purine (A or G)");
+    helpData.helpName.push_back("Pyrimidine (C or T or U)");
+    helpData.helpName.push_back("Amino (A or C)");
+    helpData.helpName.push_back("Ketone (G or T)");
+    helpData.helpName.push_back("Strong interaction (C or G)");
+    helpData.helpName.push_back("Weak interaction (A or T)");
+    helpData.helpName.push_back("Not-G (A or C or T) H follows G in the alphabet");
+    helpData.helpName.push_back("Not-A (C or G or T) B follows A in the alphabet");
+    helpData.helpName.push_back("Not-T (not-U) (A or C or G) V follows U in the alphabet");
+    helpData.helpName.push_back("Not-C (A or G or T) D follows C in the alphabet");
+    helpData.helpName.push_back("Any (A or C or G or T)");
 }
 
-void analyseRegions(){
-	
-	int countN=0,nRegion=0,countC=0,cRegion=0,j=0;
-	if (dna_db.SEQ.at(j)=='N')			// if seq starts of with N
-		analyse.nStart=1;				// makes that 1 so other functions know what to calculate
-	else
-		analyse.nStart=0;
-	for(int i=0; i<dna_db.SEQ.size(); i++){
-		if (dna_db.SEQ.at(i)=='N'){				// if char at i == N
-			if(countN==0){					// if that is the 1st N encountered
-				cRegion++;					// coded region +1
-				analyse.NindexStart.push_back(i);		// and location added to vector
-			}
-			else;
-			countN++;					// if not first N encounteres, keep counting number of N
-		}
-		else{							// if char at i is not  N
-			if (countN !=0){			// and N counter is not, that means it has reached the end of non coding region
-				analyse.NindexEnd.push_back(i);		// so location of end point into vector
-				countN=0;				// reset n counter to 0
-				nRegion++;				// increment the number of N regions found
-			}
-			countC++;		// if N is 0 and char at i is not N, keep incrementing coded char counter
-		}
-	}
-	
-	if (analyse.cRegion==0)			// if there is no no coding region
-		analyse.cRegion=cRegion+1;
-	else{
-		analyse.nRegion=nRegion;
-		analyse.cRegion=cRegion;
-	}
+// [Fix #2] Now only prints the help menu; data is initialized once in initHelpMenu().
+void printHelpMenu() {
+    for (size_t i = 0; i < helpData.helpNum.size(); i++) {
+        std::cout << helpData.helpNum.at(i)
+                  << "\t\t" << helpData.helpName.at(i) << std::endl;
+    }
 }
 
-void gapRegion(){
-	
-	int region,start,end,length;
-	string sequence;
-	cout << "Enter gap region number:\n>";
-	cin >> region;
-	
-	if (analyse.nStart==1){				// if start is N
-		start = analyse.NindexStart.at(region-1);		// start is 0th vector of start N index
-		end = analyse.NindexEnd.at(region-1);			// End is 0th vector of end N index
-		length = analyse.NindexEnd.at(region-1) - analyse.NindexStart.at(region-1);
-	}
-	else{									// if start is not N
-		start = analyse.NindexEnd.at(region-1);			//	Start is 0th vector of end N index
-		end = analyse.NindexStart.at(region);			// end is 1st vector of start N index
-		length = analyse.NindexStart.at(region) - analyse.NindexEnd.at(region-1);
-		
-	}
-	
-	sequence = dna_db.SEQ.substr (start,length);
-	
-	cout << "Selected Sequence:\n" << "Base pair range: (" << start << "," << end << ")\n" << "Gap region number: " << region << "\n" <<endl;
-	cout << "Sequence:\n" << sequence<< endl;
-	
+// Displays a detailed summary of the currently loaded DNA sequence,
+// including region counts and base pair composition statistics.
+void summary() {
+    std::cout << "\nLoading..." << std::endl;
+    analysisResult.basePairs = dna_db.SEQ.length();
+
+    // Count individual nucleotide occurrences
+    analysisResult.G = std::count(dna_db.SEQ.begin(), dna_db.SEQ.end(), 'G');
+    analysisResult.A = std::count(dna_db.SEQ.begin(), dna_db.SEQ.end(), 'A');
+    analysisResult.T = std::count(dna_db.SEQ.begin(), dna_db.SEQ.end(), 'T');
+    analysisResult.C = std::count(dna_db.SEQ.begin(), dna_db.SEQ.end(), 'C');
+    analysisResult.N = std::count(dna_db.SEQ.begin(), dna_db.SEQ.end(), 'N');
+    analysisResult.unknown = analysisResult.basePairs - analysisResult.G
+        - analysisResult.C - analysisResult.T - analysisResult.A - analysisResult.N;
+
+    std::cout << "Sequence identifiers:" << std::endl;
+    std::cout << "Name:\t" << dna_db.Name << std::endl;
+    std::cout << "GID:\t" << dna_db.GID << std::endl;
+    std::cout << "REF:\t" << dna_db.REF << std::endl;
+
+    std::cout << "\nRegion characteristics:" << std::endl;
+    std::cout << "# regions:\t" << analysisResult.nRegion + analysisResult.cRegion << std::endl;
+    std::cout << "# N regions:\t" << analysisResult.nRegion << std::endl;
+    std::cout << "# C regions:\t" << analysisResult.cRegion << std::endl;
+
+    // Print IUPAC ambiguity code statistics
+    std::cout << "\nBase pair characteristics:" << std::endl;
+    std::cout << "# base pairs\t" << dna_db.SEQ.length() << std::endl;
+    std::cout << "G:\t" << analysisResult.G << std::endl;
+    std::cout << "A:\t" << analysisResult.A << std::endl;
+    std::cout << "T:\t" << analysisResult.T << std::endl;
+    std::cout << "C:\t" << analysisResult.C << std::endl;
+    std::cout << "R:\t" << analysisResult.C + analysisResult.A << std::endl;
+    std::cout << "Y:\t" << analysisResult.C + analysisResult.T << std::endl;
+    std::cout << "M:\t" << analysisResult.A + analysisResult.C << std::endl;
+    std::cout << "K:\t" << analysisResult.G + analysisResult.T << std::endl;
+    std::cout << "S:\t" << analysisResult.C + analysisResult.G << std::endl;
+    std::cout << "W:\t" << analysisResult.A + analysisResult.T << std::endl;
+    std::cout << "H:\t" << analysisResult.A + analysisResult.C + analysisResult.T << std::endl;
+    std::cout << "B:\t" << analysisResult.C + analysisResult.G + analysisResult.T << std::endl;
+    std::cout << "V:\t" << analysisResult.C + analysisResult.G + analysisResult.A << std::endl;
+    std::cout << "D:\t" << analysisResult.A + analysisResult.G + analysisResult.T << std::endl;
+    std::cout << "N:\t" << analysisResult.N << std::endl;
+    std::cout << "Unknown:\t" << analysisResult.unknown << std::endl;
 }
 
-void codedRegion(){
-	
-	int region,start,end,length;
-	string sequence;
-	cout << "Enter coded region number:\n>";
-	cin >> region;
-	
-	if (analyse.nStart==1){					// explaination same as codedregion function
-		start = analyse.NindexEnd.at(region-1);
-		end = analyse.NindexStart.at(region);
-		length = analyse.NindexStart.at(region) - analyse.NindexEnd.at(region-1);
-	}
-	else{
-		start = analyse.NindexStart.at(region-1);
-		end = analyse.NindexEnd.at(region-1);
-		length = analyse.NindexEnd.at(region-1) - analyse.NindexStart.at(region-1);
-	}
-	
-	sequence = dna_db.SEQ.substr (start,length);
+// Scans the DNA sequence to identify gap (N) regions and coded regions.
+// Records the start/end indices of each N-region for later queries.
+void analyseRegions() {
+    int countN = 0, nRegion = 0, countC = 0, cRegion = 0;
 
-	cout << "Selected Sequence:\n" << "Base pair range: (" << start << "," << end << ")\n" << "Coded region number: " << region << "\n" <<endl;
-	cout << "Sequence:\n" << sequence<< endl;
-	
+    // Check if the sequence starts with an N (gap) character
+    if (dna_db.SEQ.empty()) {
+        std::cout << "Warning: DNA sequence is empty, skipping region analysis." << std::endl;
+        return;
+    }
+
+    if (dna_db.SEQ.at(0) == 'N')
+        analysisResult.nStart = 1;
+    else
+        analysisResult.nStart = 0;
+
+    for (size_t i = 0; i < dna_db.SEQ.size(); i++) {
+        if (dna_db.SEQ.at(i) == 'N') {
+            if (countN == 0) {
+                cRegion++;
+                analysisResult.NindexStart.push_back(i);
+            }
+            countN++;
+        } else {
+            if (countN != 0) {
+                // End of a gap region detected — record end index
+                analysisResult.NindexEnd.push_back(i);
+                countN = 0;
+                nRegion++;
+            }
+            countC++;
+        }
+    }
+
+    // Handle edge case: sequence ends with N characters
+    if (countN != 0) {
+        analysisResult.NindexEnd.push_back(dna_db.SEQ.size());
+        nRegion++;
+    }
+
+    if (analysisResult.cRegion == 0)
+        analysisResult.cRegion = cRegion + 1;
+    else {
+        analysisResult.nRegion = nRegion;
+        analysisResult.cRegion = cRegion;
+    }
 }
 
-void findManual(){
-	
-	string findN;
-	long count=0, length, found=0;
-	cout << "\nSpecify the DNA sequence nucleotides you would like to find:\n>" ;
-//	findN = "hello";
-	cin >> findN;
-//	dna_db.SEQ="hello";
-	length = findN.size();
-	for (int i=0 ; i < dna_db.SEQ.size(); i++){			// runs main seq char by char
-		for (int j=0;j< findN.size();j++){				// runs 1 char of seq
-			if(dna_db.SEQ.at(i) == findN.at(j)){		// if 1st char find == 1st char main seq
-				count++;								// it will keep running incrementing char until theres no match
-				i++;
-				if (count == length){					// if all characters match, increment found and repeat
-					found++;
-					cout << "Base pair range(" << i-length << "," << i << ")" << endl;
-				}
-			}
-			else{										// l'ets say if char 2 seq != char 2 main, it'll break and start again
-				count=0;
-				break;
-			}
-		}
-	}
-	
-	cout << "Total Number of matches found: " << found << endl;
-	
-	
+// Displays the DNA sequence for a user-specified gap (N) region.
+// [Fix #5] Added bounds checking — validates the region number before
+// indexing into vectors to prevent std::out_of_range crashes.
+void gapRegionQuery() {
+    int region, start, end, length;
+    std::string sequence;
+    std::cout << "Enter gap region number:\n>";
+    std::cin >> region;
+
+    // [Fix #5] Validate region number to prevent out-of-range access
+    if (region < 1 || region > (int)analysisResult.NindexStart.size()) {
+        std::cout << "Invalid region number. Please enter a value between 1 and "
+                  << analysisResult.NindexStart.size() << "." << std::endl;
+        return;
+    }
+
+    if (analysisResult.nStart == 1) {
+        start = analysisResult.NindexStart.at(region - 1);
+        end = analysisResult.NindexEnd.at(region - 1);
+        length = analysisResult.NindexEnd.at(region - 1) - analysisResult.NindexStart.at(region - 1);
+    } else {
+        // Validate that region index is within bounds for the 'else' branch
+        if (region >= (int)analysisResult.NindexStart.size()) {
+            std::cout << "Invalid region number for this sequence layout." << std::endl;
+            return;
+        }
+        start = analysisResult.NindexEnd.at(region - 1);
+        end = analysisResult.NindexStart.at(region);
+        length = analysisResult.NindexStart.at(region) - analysisResult.NindexEnd.at(region - 1);
+    }
+
+    sequence = dna_db.SEQ.substr(start, length);
+
+    std::cout << "Selected Sequence:\n"
+              << "Base pair range: (" << start << "," << end << ")\n"
+              << "Gap region number: " << region << "\n" << std::endl;
+    std::cout << "Sequence:\n" << sequence << std::endl;
 }
 
-void findFile(){			// funtion to check file match with SEQ
-	
-	string file, tempDNAseq, seqCompare;
-	long loc=0 ;
-	stringstream seq(dna_db.SEQ);
-	cout << "\n(Warning, do not key in large files as programme would be unresponsive trying to print out match)\n Specify the DNA sequence file you would like to find:\n>";
-//	file= "gnFOXF1.fa";
-	cin >> file;
-	
-	ifstream input(file);
-	cout << "Loading " << file <<endl;
-	if (!input.good()){
-		cout << "File not found" << endl;
-		findFile();
-	}
-	else
-		cout << file << "..." << endl;
-	
-	input.ignore(5000,'\n');			// converts sample into string, ignores first line
-	while(!input.eof()){			// loop to read lines of new dna Seq
-		getline(input, tempDNAseq);
-		seqCompare.append(tempDNAseq);		// append adds new line to existing
-	}
-	cout << "Successful loading of " << file << endl;
+// Displays the DNA sequence for a user-specified coded region.
+// [Fix #5] Added bounds checking — same approach as gapRegionQuery().
+void codedRegionQuery() {
+    int region, start, end, length;
+    std::string sequence;
+    std::cout << "Enter coded region number:\n>";
+    std::cin >> region;
 
-	loc = dna_db.SEQ.find(seqCompare);		// make loc the largest storable value initially, and equate to location of match
-	if ( loc != dna_db.SEQ.length()){
-		cout << "\nBase pair range: (" << loc << "," << dna_db.SEQ.length() << ")" << endl;
-		cout << seqCompare;
-	}
-	else
-		cout << "No Match" << endl;
-	
-	
-}
-void bpRange(){
-	
-	vector<int> vectRange;
-	string ranges, subst, output;
-	int length;
-	cout << "Enter a comma ',' separating base pair ranges (NO SPACES):\n" << ">";
-	cin >> ranges;
-	
-	stringstream range(ranges);			//converts range string into vector
-	while (range.good()){
-		getline (range, subst, ',');
-		vectRange.push_back (stoi(subst));
-	}
-	length =vectRange.at(1)-vectRange.at(0);
-	output = dna_db.SEQ.substr(vectRange.at(0),length);			// extracts string based on vector index, (start,length)
-	cout << "Selected sequence: \nBase pair range: (" << vectRange.at(0) << "," << vectRange.at(1) << ")" << endl;
-	cout << "\nSequence:\n" << output << endl;
-									 
+    // [Fix #5] Validate region number to prevent out-of-range access
+    if (region < 1 || region > (int)analysisResult.NindexEnd.size()) {
+        std::cout << "Invalid region number. Please enter a value between 1 and "
+                  << analysisResult.NindexEnd.size() << "." << std::endl;
+        return;
+    }
+
+    if (analysisResult.nStart == 1) {
+        // Validate that region index is within bounds for the 'if' branch
+        if (region >= (int)analysisResult.NindexStart.size()) {
+            std::cout << "Invalid region number for this sequence layout." << std::endl;
+            return;
+        }
+        start = analysisResult.NindexEnd.at(region - 1);
+        end = analysisResult.NindexStart.at(region);
+        length = analysisResult.NindexStart.at(region) - analysisResult.NindexEnd.at(region - 1);
+    } else {
+        start = analysisResult.NindexStart.at(region - 1);
+        end = analysisResult.NindexEnd.at(region - 1);
+        length = analysisResult.NindexEnd.at(region - 1) - analysisResult.NindexStart.at(region - 1);
+    }
+
+    sequence = dna_db.SEQ.substr(start, length);
+
+    std::cout << "Selected Sequence:\n"
+              << "Base pair range: (" << start << "," << end << ")\n"
+              << "Coded region number: " << region << "\n" << std::endl;
+    std::cout << "Sequence:\n" << sequence << std::endl;
 }
 
+// [Fix #6] Rewrote findManual() to use std::string::find() instead of
+// a hand-rolled nested loop. The previous implementation modified the outer
+// loop variable 'i' inside the inner loop, which caused skipped characters
+// and potential out-of-bounds access.
+void findManual() {
+    std::string findN;
+    long found = 0;
+    std::cout << "\nSpecify the DNA sequence nucleotides you would like to find:\n>";
+    std::cin >> findN;
 
-int main()
-{
-	cout << "DNA Sequence Database Software" << endl;
-	cout << "Specify the name of DNA sequence file names you would like to load. For multiple files, add a ',' between each file name. (Add .fa extension after name, eg chr1.fa and no space in between files)\n>" ;
-	
-//	initial.File = "chr16.fa";
-	cin >> initial.File;			//Enter string of diff files
+    if (findN.empty()) {
+        std::cout << "Empty search string." << std::endl;
+        return;
+    }
 
-	organiseFile(initial.File);		//string of files organised/separated
-	initialOptions();				// initialise initial options
+    // Use std::string::find() for correct, safe substring searching
+    std::size_t pos = dna_db.SEQ.find(findN, 0);
+    while (pos != std::string::npos) {
+        found++;
+        std::cout << "Base pair range(" << pos << "," << pos + findN.size() << ")" << std::endl;
+        pos = dna_db.SEQ.find(findN, pos + 1); // Allow overlapping matches
+    }
 
-menu1:
-	printOrganiseFile();			// prints which file to choose
-//	initial.initialSelect ="1";
-	cin >> initial.initialSelect;		//Select input file and put into struct
-	
-	if (initial.initialSelect=="Q"){			// reads and selects input options
-		cout << "Programme ended." << endl;
-		return 0;
-	}
-	else if(initial.initialSelect=="S"){
-		firstSummary();
-		goto menu1;
-	}
-	else{
-		selectFile(initial.initialSelect);		//File being selected
-		if (initial.check == 1){		// if cant open file, 1 would be output
-			return 0;
-		}
-		else
-			assignClass();					// selected file issued into class
-		
-	}
-	
-	analyseRegions();
-
-option1:
-	printInitialOptions();			// Prints options on what to do with file
-	cin >> option.optionSelect;		// puts imputs for options into struct to process
-	if (option.optionSelect=="Q"){
-		cout << "Programme ended." << endl;
-		return 0;
-	}
-	else if (option.optionSelect=="H"){
-		helpMenu();
-		goto option1;
-	}
-	else if (option.optionSelect=="S"){
-		summary();
-		goto option1;
-	}
-	else if (option.optionSelect=="R"){
-		goto menu1;
-	}
-	else if (option.optionSelect=="1"){
-		gapRegion();
-		goto option1;
-
-	}
-	else if (option.optionSelect=="2"){
-		codedRegion();
-		goto option1;
-
-	}
-	else if (option.optionSelect=="3"){
-		bpRange();
-		goto option1;
-
-	}
-	else if (option.optionSelect == "4"){
-		findManual();
-		goto option1;
-
-	}
-	else if (option.optionSelect == "5"){
-		findFile();
-		goto option1;
-	}
-	else{
-		cout << "Command not recognised, try again"<< endl;
-		goto option1;
-	}
+    std::cout << "Total Number of matches found: " << found << std::endl;
 }
 
+// [Fix #3] Replaced unbounded recursion with a loop. Previously, if the user
+// entered an invalid filename, findFile() called itself recursively, risking
+// a stack overflow. Now retries in a while loop.
+// [Fix #15] Changed comparison from dna_db.SEQ.length() to std::string::npos.
+// std::string::find() returns npos on failure, not the string's length.
+void findFile() {
+    std::string file, tempDNAseq, seqCompare;
+
+    std::cout << "\n(Warning, do not key in large files as programme would be "
+              << "unresponsive trying to print out match)\n"
+              << "Specify the DNA sequence file you would like to find:\n>";
+
+    // [Fix #3] Loop instead of recursive call for invalid files
+    while (true) {
+        std::cin >> file;
+        std::ifstream input(file);
+        std::cout << "Loading " << file << std::endl;
+        if (!input.good()) {
+            std::cout << "File not found. Please try again:\n>";
+            continue;
+        }
+        std::cout << file << "..." << std::endl;
+
+        input.ignore(5000, '\n'); // Skip header line
+        while (!input.eof()) {
+            std::getline(input, tempDNAseq);
+            seqCompare.append(tempDNAseq);
+        }
+        std::cout << "Successful loading of " << file << std::endl;
+        break;
+    }
+
+    // [Fix #15] Use std::string::npos for proper find() failure check
+    std::size_t loc = dna_db.SEQ.find(seqCompare);
+    if (loc != std::string::npos) {
+        std::cout << "\nBase pair range: (" << loc << "," << loc + seqCompare.size() << ")" << std::endl;
+        std::cout << seqCompare;
+    } else {
+        std::cout << "No Match" << std::endl;
+    }
+}
+
+// [Fix #16] Added input validation for bpRange(). Previously, entering a
+// single number (no comma) would cause vectRange.at(1) to throw, and
+// non-numeric input would crash via stoi(). Now validates before accessing.
+void bpRange() {
+    std::vector<int> vectRange;
+    std::string ranges, subst, output;
+    int length;
+    std::cout << "Enter a comma ',' separating base pair ranges (NO SPACES):\n>";
+    std::cin >> ranges;
+
+    std::stringstream range(ranges);
+    while (range.good()) {
+        std::getline(range, subst, ',');
+        try {
+            vectRange.push_back(std::stoi(subst));
+        } catch (const std::exception& e) {
+            std::cout << "Invalid input: '" << subst << "' is not a valid number." << std::endl;
+            return;
+        }
+    }
+
+    // Validate that exactly two range values were provided
+    if (vectRange.size() < 2) {
+        std::cout << "Error: Please provide two comma-separated numbers (e.g., 100,200)." << std::endl;
+        return;
+    }
+
+    // Validate that start is less than end
+    if (vectRange.at(0) >= vectRange.at(1)) {
+        std::cout << "Error: Start position must be less than end position." << std::endl;
+        return;
+    }
+
+    // Validate that positions are within the sequence bounds
+    if (vectRange.at(0) < 0 || vectRange.at(1) > (int)dna_db.SEQ.size()) {
+        std::cout << "Error: Range is out of bounds. Sequence length is "
+                  << dna_db.SEQ.size() << "." << std::endl;
+        return;
+    }
+
+    length = vectRange.at(1) - vectRange.at(0);
+    output = dna_db.SEQ.substr(vectRange.at(0), length);
+    std::cout << "Selected sequence: \nBase pair range: ("
+              << vectRange.at(0) << "," << vectRange.at(1) << ")" << std::endl;
+    std::cout << "\nSequence:\n" << output << std::endl;
+}
+
+// [Fix #8] Main function rewritten to use while loops instead of goto
+// statements. The original used goto with labels (menu1:, option1:) which
+// created hard-to-follow spaghetti code.
+// [Fix #17] All commented-out debug code has been removed.
+int main() {
+    std::cout << "DNA Sequence Database Software" << std::endl;
+    std::cout << "Specify the name of DNA sequence file names you would like to load. "
+              << "For multiple files, add a ',' between each file name. "
+              << "(Add .fa extension after name, eg chr1.fa and no space in between files)\n>";
+
+    std::cin >> initial.File;
+
+    organiseFile(initial.File);
+    initMenuOptions();
+    initHelpMenu(); // [Fix #2] Initialize help menu data once
+
+    // [Fix #8] Outer menu loop replaces 'goto menu1'
+    bool running = true;
+    while (running) {
+        printOrganiseFile();
+        std::cin >> initial.initialSelect;
+
+        if (initial.initialSelect == "Q") {
+            std::cout << "Programme ended." << std::endl;
+            return 0;
+        } else if (initial.initialSelect == "S") {
+            firstSummary();
+            continue; // Return to file selection menu
+        } else {
+            selectFile(initial.initialSelect);
+            if (initial.check == 1) {
+                return 0;
+            }
+            assignClass();
+            if (initial.check == 1) {
+                return 0; // [Fix #14] Check for errors from assignClass too
+            }
+        }
+
+        analyseRegions();
+
+        // [Fix #8] Inner options loop replaces 'goto option1'
+        bool inOptionsMenu = true;
+        while (inOptionsMenu) {
+            printMenuOptions();
+            std::cin >> menuOption.optionSelect;
+
+            if (menuOption.optionSelect == "Q") {
+                std::cout << "Programme ended." << std::endl;
+                return 0;
+            } else if (menuOption.optionSelect == "H") {
+                printHelpMenu(); // [Fix #2] Just prints, no longer re-initializes
+            } else if (menuOption.optionSelect == "S") {
+                summary();
+            } else if (menuOption.optionSelect == "R") {
+                inOptionsMenu = false; // Break to outer loop (file selection)
+            } else if (menuOption.optionSelect == "1") {
+                gapRegionQuery();
+            } else if (menuOption.optionSelect == "2") {
+                codedRegionQuery();
+            } else if (menuOption.optionSelect == "3") {
+                bpRange();
+            } else if (menuOption.optionSelect == "4") {
+                findManual();
+            } else if (menuOption.optionSelect == "5") {
+                findFile();
+            } else {
+                std::cout << "Command not recognised, try again" << std::endl;
+            }
+        }
+    }
+
+    return 0;
+}
